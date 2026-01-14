@@ -11,14 +11,10 @@ id = '019bbe20-a76b-87e4-f052-efa9afc53073'
 dashboard_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbe20-a76b-87e4-f052-efa9afc53073'
 direct_url = 'https://019bbe20-a76b-87e4-f052-efa9afc53073.share.connect.posit.cloud'
 logs_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbe20-a76b-87e4-f052-efa9afc53073/history'
-deployed_at = '2026-01-14T15:18:46-05:00'
+deployed_at = '2026-01-14T15:20:28-05:00'
 files = [
-  '.gitignore',
   '.posit/publish/Latent Class Analysis in R- A-N7SI.toml',
   '.posit/publish/deployments/deployment-JS6P.toml',
-  'LICENSE',
-  'README.md',
-  'lca-walkthrough.html',
   'lca-walkthrough.qmd',
   'lca-walkthrough_files/figure-html/class-profiles-1.png',
   'lca-walkthrough_files/figure-html/covariate-plot-age-1.png',
@@ -66,11 +62,7 @@ files = [
   '/.posit/publish/Latent Class Analysis in R- A-N7SI.toml',
   '/.posit/publish/deployments/deployment-JS6P.toml',
   '/.posit',
-  '/lca-walkthrough_files',
-  '/lca-walkthrough.html',
-  '/README.md',
-  '/.gitignore',
-  '/LICENSE'
+  '/lca-walkthrough_files'
 ]
 title = 'Latent Class Analysis in R: A Step-by-Step Guide'
 
