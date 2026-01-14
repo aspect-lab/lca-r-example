@@ -35,18 +35,22 @@ This tutorial will walk you through:
 #| label: setup
 
 # Install packages if needed (uncomment to run)
-# install.packages(c("poLCA", "tidyverse", "knitr", "kableExtra"))
+# install.packages(c("poLCA", "tidyverse", "knitr", "kableExtra", "patchwork",
+#                    "randomForest", "fastshap"))
 
 # Load required packages
-library(poLCA)      # Main LCA package
-library(tidyverse)  # Data manipulation and visualization
-library(knitr)      # Tables
-library(kableExtra) # Pretty tables
+library(poLCA)       # Main LCA package
+library(tidyverse)   # Data manipulation and visualization
+library(knitr)       # Tables
+library(kableExtra)  # Pretty tables
+library(patchwork)   # Combining multiple plots
 ```
 
 ### The Dataset
 
-We'll use the `cheating` dataset that comes built into the `poLCA` package. This dataset contains self-reported cheating behaviors from 319 undergraduate students. The four binary indicators are:
+We'll use the indicator variables from the `cheating` dataset in the `poLCA` package, combined with **synthetic demographic data** to create a more realistic educational research scenario. This simulates a study of cheating behaviors among K-12 students.
+
+#### Indicator Variables (from cheating dataset)
 
 | Variable | Description |
 |----------|-------------|
@@ -55,29 +59,96 @@ We'll use the `cheating` dataset that comes built into the `poLCA` package. This
 | **FRAUD** | Purchased a term paper to hand in as own work (1 = No, 2 = Yes) |
 | **COPYEXAM** | Copied answers during an exam from someone sitting nearby (1 = No, 2 = Yes) |
 
+#### Synthetic Demographic Variables
+
+| Variable | Description |
+|----------|-------------|
+| **AGE** | Student age (10-18 years) |
+| **SCHOOL** | School level (Elementary, Middle School, High School) |
+| **GPA** | Grade point average (1.0-4.0 scale) |
+| **GPA_ZSCORE** | Z-scored GPA within school level |
+
 ```{r}
 #| label: load-data
 
-# Load the cheating dataset
+# Load the cheating dataset and keep only indicator variables
 data(cheating)
+n <- nrow(cheating)
+
+# Set seed for reproducibility of synthetic data
+set.seed(123)
+
+# Generate synthetic AGE (10-18) with realistic school distribution
+# Slight skew toward middle/high school ages
+age_probs <- c(rep(0.08, 3),   # Ages 10-12 (Elementary)
+               rep(0.12, 3),   # Ages 13-15 (Middle)
+               rep(0.13, 3))   # Ages 16-18 (High School)
+age_probs <- age_probs / sum(age_probs)
+AGE <- sample(10:18, n, replace = TRUE, prob = age_probs)
+
+# Create SCHOOL based on AGE
+SCHOOL <- case_when(
+  AGE >= 10 & AGE <= 12 ~ "Elementary",
+  AGE >= 13 & AGE <= 15 ~ "Middle School",
+  AGE >= 16 & AGE <= 18 ~ "High School"
+)
+SCHOOL <- factor(SCHOOL, levels = c("Elementary", "Middle School", "High School"))
+
+# Generate GPA with school-clustered means and variances
+# Rationale: GPA distributions tend to have greater variance in higher grades
+# Elementary: tighter distribution around higher mean (less differentiation)
+# High School: wider distribution (more differentiation in performance)
+
+generate_gpa <- function(school) {
+  gpa <- case_when(
+    school == "Elementary" ~ rnorm(1, mean = 3.2, sd = 0.4),
+    school == "Middle School" ~ rnorm(1, mean = 2.9, sd = 0.6),
+    school == "High School" ~ rnorm(1, mean = 2.7, sd = 0.8)
+  )
+  # Bound GPA to 1.0-4.0 range
+  pmin(pmax(gpa, 1.0), 4.0)
+}
+
+GPA <- sapply(SCHOOL, generate_gpa)
+
+# Create GPA_ZSCORE within school clusters
+# This standardizes GPA relative to peers at the same school level
+gpa_df <- data.frame(SCHOOL = SCHOOL, GPA = GPA)
+gpa_df <- gpa_df %>%
+  group_by(SCHOOL) %>%
+  mutate(
+    GPA_ZSCORE = (GPA - mean(GPA)) / sd(GPA)
+  ) %>%
+  ungroup()
+
+GPA_ZSCORE <- gpa_df$GPA_ZSCORE
+
+# Combine cheating indicators with synthetic demographics
+student_data <- cheating %>%
+  select(LIEEXAM, LIEPAPER, FRAUD, COPYEXAM) %>%
+  mutate(
+    AGE = AGE,
+    SCHOOL = SCHOOL,
+    GPA = round(GPA, 2),
+    GPA_ZSCORE = round(GPA_ZSCORE, 3)
+  )
 
 # View the first few rows
-head(cheating)
+head(student_data)
 
 # Check the structure
-str(cheating)
-
-# Summary statistics
-summary(cheating)
+str(student_data)
 ```
 
-**Important Note for poLCA:** All indicator variables must be coded as positive integers starting at 1 (not 0). The `cheating` dataset is already correctly coded (1 = No, 2 = Yes).
+**Important Note for poLCA:** All indicator variables must be coded as positive integers starting at 1 (not 0). The cheating behavior variables are already correctly coded (1 = No, 2 = Yes).
+
+### Exploring the Data
 
 ```{r}
 #| label: explore-data
 
-# Look at response frequencies for each variable
-cheating %>%
+# Response frequencies for cheating behaviors
+student_data %>%
   select(LIEEXAM, LIEPAPER, FRAUD, COPYEXAM) %>%
   pivot_longer(everything(), names_to = "Variable", values_to = "Response") %>%
   mutate(Response = factor(Response, labels = c("No", "Yes"))) %>%
@@ -85,6 +156,50 @@ cheating %>%
   pivot_wider(names_from = Response, values_from = n) %>%
   mutate(Pct_Yes = round(Yes / (No + Yes) * 100, 1)) %>%
   kable(caption = "Response Frequencies for Cheating Behaviors") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+#| label: explore-demographics
+#| fig-width: 10
+#| fig-height: 4
+
+# Visualize demographic distributions
+p1 <- ggplot(student_data, aes(x = AGE)) +
+  geom_bar(fill = "steelblue", alpha = 0.7) +
+  labs(title = "Age Distribution", x = "Age", y = "Count") +
+  theme_minimal()
+
+p2 <- ggplot(student_data, aes(x = SCHOOL)) +
+  geom_bar(fill = "darkgreen", alpha = 0.7) +
+  labs(title = "School Level Distribution", x = "", y = "Count") +
+  theme_minimal()
+
+p3 <- ggplot(student_data, aes(x = GPA, fill = SCHOOL)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "GPA Distribution by School Level",
+       x = "GPA", y = "Density") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+p1 | p2 | p3
+```
+
+```{r}
+#| label: gpa-by-school
+
+# Summary of GPA by school level
+student_data %>%
+  group_by(SCHOOL) %>%
+  summarize(
+    N = n(),
+    Mean_GPA = mean(GPA),
+    SD_GPA = sd(GPA),
+    Min_GPA = min(GPA),
+    Max_GPA = max(GPA),
+    Mean_ZSCORE = mean(GPA_ZSCORE)  # Should be ~0 within each group
+  ) %>%
+  kable(digits = 3, caption = "GPA Statistics by School Level") %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
@@ -104,7 +219,7 @@ lca_formula <- cbind(LIEEXAM, LIEPAPER, FRAUD, COPYEXAM) ~ 1
 
 ### Step 2: Fit Models with Different Numbers of Classes
 
-A key step in LCA is determining the optimal number of classes. We'll fit models with 2, 3, and 4 classes and compare them.
+A key step in LCA is determining the optimal number of classes. We'll fit models with 1, 2, 3, and 4 classes and compare them. The **1-class model serves as a baseline** - it assumes no latent heterogeneity (all individuals come from the same distribution). Comparing it to multi-class models demonstrates whether latent class structure exists in the data.
 
 ```{r}
 #| label: fit-models
@@ -112,22 +227,26 @@ A key step in LCA is determining the optimal number of classes. We'll fit models
 # Set seed for reproducibility
 set.seed(42)
 
-# Fit models with 2-4 classes
+# Fit models with 1-4 classes
 # nrep = 10 runs the model 10 times with different starting values
 # to avoid local maxima (increase for final analyses)
 
-model_2 <- poLCA(lca_formula, data = cheating, nclass = 2,
+# 1-class model: No latent heterogeneity (baseline model)
+model_1 <- poLCA(lca_formula, data = student_data, nclass = 1,
+                 nrep = 1, verbose = FALSE)  # nrep=1 since 1-class has no local maxima issue
+
+model_2 <- poLCA(lca_formula, data = student_data, nclass = 2,
                  nrep = 10, verbose = FALSE)
 
-model_3 <- poLCA(lca_formula, data = cheating, nclass = 3,
+model_3 <- poLCA(lca_formula, data = student_data, nclass = 3,
                  nrep = 10, verbose = FALSE)
 
-model_4 <- poLCA(lca_formula, data = cheating, nclass = 4,
+model_4 <- poLCA(lca_formula, data = student_data, nclass = 4,
                  nrep = 10, verbose = FALSE)
 
 # Store models in a list for easier comparison
-models <- list(model_2, model_3, model_4)
-names(models) <- c("2-Class", "3-Class", "4-Class")
+models <- list(model_1, model_2, model_3, model_4)
+names(models) <- c("1-Class", "2-Class", "3-Class", "4-Class")
 ```
 
 ## Fit Statistics
@@ -166,6 +285,7 @@ extract_basic_fit <- function(model, n_class) {
 
 # Extract for all models
 basic_fit <- bind_rows(
+  extract_basic_fit(model_1, 1),
   extract_basic_fit(model_2, 2),
   extract_basic_fit(model_3, 3),
   extract_basic_fit(model_4, 4)
@@ -188,11 +308,17 @@ Entropy measures the quality of classification. It ranges from 0 to 1, with valu
 calculate_entropy <- function(model) {
   # Get posterior probabilities
   posterior <- model$posterior
+  K <- ncol(posterior)
+
+  # For 1-class model, entropy is undefined (or trivially 1.0)
+  # since there's no uncertainty in classification
+  if (K == 1) {
+    return(1.0)  # Perfect "classification" when there's only one class
+  }
 
   # Calculate entropy
   # Formula: 1 - (sum of -p*log(p)) / (N * log(K))
   N <- nrow(posterior)
-  K <- ncol(posterior)
 
   # Calculate the sum of -p*log(p) for each observation
   # Add small value to avoid log(0)
@@ -236,9 +362,18 @@ calculate_avepp <- function(model) {
   # Get posterior probabilities and predicted class
   posterior <- model$posterior
   predicted_class <- model$predclass
+  n_classes <- ncol(posterior)
+
+  # For 1-class model, AvePP is trivially 1.0
+  # (everyone is assigned to the same class with probability 1)
+  if (n_classes == 1) {
+    return(list(
+      by_class = 1.0,
+      overall = 1.0
+    ))
+  }
 
   # Calculate AvePP for each class
-  n_classes <- ncol(posterior)
   avepp_by_class <- numeric(n_classes)
 
   for (k in 1:n_classes) {
@@ -306,6 +441,15 @@ calculate_occ <- function(model) {
   predicted_class <- model$predclass
   class_sizes <- model$P  # Prior probabilities (class proportions)
   n_classes <- ncol(posterior)
+
+  # For 1-class model, OCC is not meaningful (no classification to evaluate)
+  # Return NA to indicate this
+  if (n_classes == 1) {
+    return(list(
+      by_class = NA,
+      minimum = NA
+    ))
+  }
 
   occ_by_class <- numeric(n_classes)
 
@@ -440,19 +584,21 @@ blrt_test <- function(formula, data, k, n_boot = 100, seed = 42) {
   ))
 }
 
-# Run BLRT for 2 vs 3 classes and 3 vs 4 classes
+# Run BLRT for 1 vs 2, 2 vs 3, and 3 vs 4 classes
 # Using fewer bootstrap samples for demonstration (increase for real analysis)
 cat("Running Bootstrap LRT (this may take a moment)...\n\n")
 
-blrt_2v3 <- blrt_test(lca_formula, cheating, k = 3, n_boot = 50)
-blrt_3v4 <- blrt_test(lca_formula, cheating, k = 4, n_boot = 50)
+blrt_1v2 <- blrt_test(lca_formula, student_data, k = 2, n_boot = 50)
+blrt_2v3 <- blrt_test(lca_formula, student_data, k = 3, n_boot = 50)
+blrt_3v4 <- blrt_test(lca_formula, student_data, k = 4, n_boot = 50)
 
 # Display results
+# Convention: "k vs k-1" means testing if k-class model fits better than k-1 class model
 blrt_results <- data.frame(
-  Comparison = c("2 vs 3 Classes", "3 vs 4 Classes"),
-  LRT_Statistic = c(blrt_2v3$lrt_statistic, blrt_3v4$lrt_statistic),
-  p_value = c(blrt_2v3$p_value, blrt_3v4$p_value),
-  N_Bootstrap = c(blrt_2v3$n_valid_boot, blrt_3v4$n_valid_boot)
+  Comparison = c("2 vs 1 Classes", "3 vs 2 Classes", "4 vs 3 Classes"),
+  LRT_Statistic = c(blrt_1v2$lrt_statistic, blrt_2v3$lrt_statistic, blrt_3v4$lrt_statistic),
+  p_value = c(blrt_1v2$p_value, blrt_2v3$p_value, blrt_3v4$p_value),
+  N_Bootstrap = c(blrt_1v2$n_valid_boot, blrt_2v3$n_valid_boot, blrt_3v4$n_valid_boot)
 )
 
 blrt_results %>%
@@ -460,7 +606,213 @@ blrt_results %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-**Interpretation:** A significant p-value (typically < 0.05) suggests that the model with more classes fits significantly better than the model with fewer classes.
+**Interpretation:** A significant p-value (typically < 0.05) suggests that the model with more classes fits significantly better than the model with fewer classes. The **2 vs 1 class comparison is critical** - a significant result here demonstrates that the 2-class model is a significant improvement over the 1-class (no heterogeneity) model, justifying the use of LCA.
+
+::: {.callout-note}
+## Why LRT Statistics Can Vary Dramatically Between Comparisons
+
+You may notice large differences in LRT statistics across comparisons (e.g., 7.58 for 2 vs 3 classes, but only 0.19 for 3 vs 4 classes). This is expected and reflects the underlying data structure:
+- The LRT statistic equals 2 × (Log-likelihood~k~ - Log-likelihood~k-1~)
+- When an additional class captures a meaningful subgroup, the log-likelihood improves substantially, producing a larger LRT
+- When an additional class adds no new information, the log-likelihoods are nearly identical, producing an LRT close to zero
+
+A very small LRT statistic (near zero) with a large p-value indicates that the more complex model provides essentially no improvement over the simpler one. This is valuable information for model selection.
+:::
+
+### Optimized BLRT for Large Datasets (Optional)
+
+The `blrt_test` function above uses a nested loop to generate bootstrap samples, which is intuitive for learning but can be slow for large datasets ($N > 1000$). For larger datasets, using `poLCA.simdata()` is significantly faster because it generates data directly from the model parameters without iterating through every row in R.
+
+**When to use this optimized approach:**
+
+1. **Large Sample Sizes:** When your dataset has thousands of observations.
+2. **Many Bootstrap Replicates:** When you need to run 500+ bootstraps for publication-quality p-values.
+3. **Performance Bottlenecks:** If the standard function is taking too long to run.
+
+```{r}
+#| label: optimized-blrt
+
+# Optimized BLRT function using poLCA.simdata() for data generation
+# poLCA.simdata() generates data directly from model parameters,
+# which is much faster than row-by-row sampling
+blrt_test_optimized <- function(formula, data, k, n_boot = 100, seed = 42) {
+  set.seed(seed)
+  n <- nrow(data)
+
+  # Fit models to observed data
+  model_null <- poLCA(formula, data = data, nclass = k - 1,
+                      nrep = 10, verbose = FALSE)
+  model_alt <- poLCA(formula, data = data, nclass = k,
+                     nrep = 10, verbose = FALSE)
+
+  # Get the variable names from the fitted model
+  var_names <- names(model_null$probs)
+
+  lrt_observed <- 2 * (model_alt$llik - model_null$llik)
+  lrt_boot <- numeric(n_boot)
+
+  for (b in 1:n_boot) {
+    # Use poLCA.simdata() to generate data efficiently from Null model parameters
+    # Key arguments:
+    #   N = sample size
+    #   probs = list of class-conditional response probability matrices
+    #   P = class mixing proportions
+    sim_result <- poLCA.simdata(N = n,
+                                 probs = model_null$probs,
+                                 P = model_null$P)
+
+    # poLCA.simdata() returns data with Y columns - rename to match original formula
+    boot_data <- sim_result$dat
+    # The Y columns correspond to the manifest variables in order
+    y_cols <- grep("^Y", names(boot_data), value = TRUE)
+    if (length(y_cols) == length(var_names)) {
+      names(boot_data)[names(boot_data) %in% y_cols] <- var_names
+    }
+
+    # Fit models to bootstrap data
+    # Note: Reduced nrep for speed; increase for real analysis
+    boot_null <- tryCatch(
+      poLCA(formula, data = boot_data, nclass = k - 1,
+            nrep = 1, verbose = FALSE),
+      error = function(e) NULL
+    )
+
+    boot_alt <- tryCatch(
+      poLCA(formula, data = boot_data, nclass = k,
+            nrep = 1, verbose = FALSE),
+      error = function(e) NULL
+    )
+
+    if (!is.null(boot_null) && !is.null(boot_alt)) {
+      lrt_boot[b] <- 2 * (boot_alt$llik - boot_null$llik)
+    } else {
+      lrt_boot[b] <- NA
+    }
+  }
+
+  lrt_boot <- na.omit(lrt_boot)
+  p_value <- mean(lrt_boot >= lrt_observed)
+
+  return(list(
+    lrt_statistic = lrt_observed,
+    p_value = p_value,
+    n_valid_boot = length(lrt_boot)
+  ))
+}
+
+# Run optimized BLRT for 2 vs 1 class comparison
+cat("Running optimized Bootstrap LRT...\n\n")
+blrt_opt_2v1 <- blrt_test_optimized(lca_formula, student_data, k = 2, n_boot = 100)
+
+cat(sprintf("2 vs 1 Classes (Optimized): LRT = %.4f, p = %.4f (n_boot = %d)\n",
+            blrt_opt_2v1$lrt_statistic, blrt_opt_2v1$p_value, blrt_opt_2v1$n_valid_boot))
+```
+
+::: {.callout-tip}
+## About poLCA.simdata()
+
+The `poLCA.simdata()` function generates simulated data from specified LCA model parameters. Key arguments:
+
+- **N**: Number of observations to simulate
+- **probs**: List of matrices containing class-conditional response probabilities (from a fitted model's `$probs`)
+- **P**: Vector of class mixing proportions (from a fitted model's `$P`)
+
+The function returns a list including `$dat` (the simulated data frame) and `$trueclass` (true class memberships). See `?poLCA.simdata` for full documentation.
+:::
+
+### Iterative BLRT Comparison (Optional)
+
+For advanced users who want to automate the BLRT comparison across multiple class solutions, the following function iteratively runs the optimized BLRT for all comparisons up to a specified maximum number of classes.
+
+```{r}
+#| label: iterative-blrt
+#| eval: false
+
+# Function to run optimized BLRT for all class comparisons up to max_classes
+# Returns a summary table similar to the original BLRT results
+run_blrt_sequence <- function(formula, data, max_classes = 4, n_boot = 100, seed = 42) {
+
+  if (max_classes < 2) {
+    stop("max_classes must be at least 2")
+  }
+
+  cat(sprintf("Running BLRT sequence for 2 to %d classes (%d bootstrap samples each)...\n\n",
+              max_classes, n_boot))
+
+
+  # Store results
+  results_list <- list()
+
+  for (k in 2:max_classes) {
+    cat(sprintf("  Testing %d vs %d classes... ", k, k - 1))
+
+    # Run the optimized BLRT
+    blrt_result <- blrt_test_optimized(formula, data, k = k,
+                                        n_boot = n_boot, seed = seed + k)
+
+    # Store results
+    results_list[[k - 1]] <- data.frame(
+      Comparison = sprintf("%d vs %d Classes", k, k - 1),
+      LRT_Statistic = blrt_result$lrt_statistic,
+      p_value = blrt_result$p_value,
+      N_Bootstrap = blrt_result$n_valid_boot,
+      Significant = ifelse(blrt_result$p_value < 0.05, "Yes", "No")
+    )
+
+    cat(sprintf("LRT = %.2f, p = %.4f %s\n",
+                blrt_result$lrt_statistic,
+                blrt_result$p_value,
+                ifelse(blrt_result$p_value < 0.05, "*", "")))
+  }
+
+  # Combine into single data frame
+  results_df <- do.call(rbind, results_list)
+  rownames(results_df) <- NULL
+
+  cat("\n")
+
+  return(results_df)
+}
+
+# Example: Run BLRT sequence comparing up to 4 classes
+# This will test: 2 vs 1, 3 vs 2, and 4 vs 3
+blrt_sequence_results <- run_blrt_sequence(
+  formula = lca_formula,
+  data = student_data,
+  max_classes = 4,
+  n_boot = 100
+)
+
+# Display results table
+blrt_sequence_results %>%
+  kable(digits = 4, caption = "Optimized BLRT Sequence Results") %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  row_spec(which(blrt_sequence_results$Significant == "Yes"),
+           bold = TRUE, background = "#d4edda")
+```
+
+::: {.callout-note}
+## Using the Iterative BLRT Function
+
+**Parameters:**
+
+- `formula`: The LCA formula (e.g., `cbind(VAR1, VAR2, VAR3) ~ 1`)
+- `data`: Your data frame
+- `max_classes`: Maximum number of classes to test (default: 4)
+- `n_boot`: Number of bootstrap samples per comparison (default: 100; use 500+ for publication)
+- `seed`: Random seed for reproducibility
+
+**Output:**
+
+The function returns a data frame with columns for Comparison, LRT_Statistic, p_value, N_Bootstrap, and Significant (Yes/No based on p < 0.05). Rows with significant p-values are highlighted in green.
+
+**Interpretation:**
+
+- Start from the top (2 vs 1) and move down
+- Stop at the first non-significant comparison
+- The simpler model in that comparison is your optimal solution
+- Example: If 2 vs 1 is significant but 3 vs 2 is not, select the 2-class model
+:::
 
 ### Combined Fit Statistics Table
 
@@ -502,32 +854,71 @@ Based on the fit statistics above, we need to consider:
 
 6. **Interpretability:** The solution should make theoretical sense.
 
+::: {.callout-important}
+## Interpreting the 1-Class Model
+
+The **1-class model serves as a baseline** that assumes no latent heterogeneity - everyone comes from the same population with the same response probabilities.
+
+- **Entropy = 1.0 and AvePP = 1.0** for the 1-class model are **trivial/uninformative** - they simply mean everyone is assigned to the same class with certainty.
+- **OCC is not applicable** (NA) for the 1-class model since there's no classification decision to evaluate.
+- The key comparison is the **BLRT for 2 vs 1 classes** - a significant p-value demonstrates that the 2-class model is a significant improvement over the 1-class model, confirming that latent class structure exists in the data.
+
+If the 2 vs 1 class BLRT is significant, this confirms that there are meaningful subgroups in the data that differ in their response patterns.
+:::
+
 ```{r}
 #| label: model-selection
 #| fig-width: 9
 #| fig-height: 5
 
-# Visual comparison of fit indices
-fit_long <- fit_summary %>%
-  select(Model, BIC, Entropy, AvePP, Min_OCC) %>%
-  pivot_longer(cols = -Model, names_to = "Index", values_to = "Value")
+# Visual comparison of fit indices - 4 panel figure
+# Each statistic gets its own panel with appropriate scale
 
-# Normalize for visualization
-fit_normalized <- fit_long %>%
-  group_by(Index) %>%
-  mutate(Value_norm = case_when(
-    Index == "BIC" ~ (max(Value) - Value) / (max(Value) - min(Value)), # Reverse for BIC
-    TRUE ~ (Value - min(Value)) / (max(Value) - min(Value))
-  ))
-
-ggplot(fit_normalized, aes(x = Model, y = Value_norm, fill = Index)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Normalized Fit Indices Comparison",
-       subtitle = "Higher values indicate better fit (BIC is reversed)",
-       y = "Normalized Value (0-1)",
-       x = "Model") +
+# Create individual plots for each metric
+p_bic <- ggplot(fit_summary, aes(x = Model, y = BIC, fill = Model)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = round(BIC, 1)), vjust = -0.5, size = 3) +
+  labs(title = "BIC (lower is better)", y = "BIC", x = "") +
   theme_minimal() +
-  scale_fill_brewer(palette = "Set2")
+  scale_fill_brewer(palette = "Set2") +
+  theme(legend.position = "none") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15)))
+
+p_entropy <- ggplot(fit_summary, aes(x = Model, y = Entropy, fill = Model)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = round(Entropy, 3)), vjust = -0.5, size = 3) +
+  labs(title = "Entropy (higher is better)", y = "Entropy", x = "") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") +
+  theme(legend.position = "none") +
+  scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.1)))
+
+p_avepp <- ggplot(fit_summary, aes(x = Model, y = AvePP, fill = Model)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = round(AvePP, 3)), vjust = -0.5, size = 3) +
+  labs(title = "AvePP (higher is better)", y = "AvePP", x = "") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") +
+  theme(legend.position = "none") +
+  scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.1)))
+
+# For OCC plot, filter out 1-class model (OCC is NA/not meaningful)
+fit_summary_occ <- fit_summary %>%
+  filter(!is.na(Min_OCC))
+
+p_occ <- ggplot(fit_summary_occ, aes(x = Model, y = Min_OCC, fill = Model)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = round(Min_OCC, 2)), vjust = -0.5, size = 3) +
+  labs(title = "Min OCC (higher is better)", subtitle = "(1-Class: N/A)",
+       y = "Min OCC", x = "") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") +
+  theme(legend.position = "none") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15)))
+
+# Combine into 2x2 grid using patchwork
+(p_bic | p_entropy) / (p_avepp | p_occ) +
+  plot_annotation(title = "Fit Indices Comparison Across Models")
 ```
 
 ## Interpreting the Selected Model
@@ -557,7 +948,7 @@ class_props <- data.frame(
   Class = paste("Class", 1:n_classes),
   Proportion = best_model$P,
   Percentage = paste0(round(best_model$P * 100, 1), "%"),
-  N_estimated = round(best_model$P * nrow(cheating))
+  N_estimated = round(best_model$P * nrow(student_data))
 )
 
 class_props %>%
@@ -668,14 +1059,14 @@ ggplot(yes_probs, aes(x = Variable, y = Probability,
 #| label: class-membership
 
 # Add predicted class to the data
-cheating_with_class <- cheating %>%
+student_data_with_class <- student_data %>%
   mutate(
     Predicted_Class = best_model$predclass,
     Max_Posterior = apply(best_model$posterior, 1, max)
   )
 
 # Summary of class assignments
-cheating_with_class %>%
+student_data_with_class %>%
   group_by(Predicted_Class) %>%
   summarize(
     N = n(),
@@ -770,6 +1161,495 @@ for (i in 1:n_classes) {
 }
 ```
 
+## Adding Covariates to Predict Class Membership
+
+A common next step in LCA is to examine how demographic variables or other characteristics predict membership in the latent classes. Our synthetic demographic data includes **AGE**, **SCHOOL** level, and **GPA_ZSCORE** (standardized GPA within school level) as potential predictors.
+
+### Why Add Covariates?
+
+Adding covariates allows us to answer questions like:
+
+- Are older students more likely to belong to the "cheating" class?
+- Does cheating behavior differ across school levels (Elementary, Middle, High School)?
+- Are students with lower GPAs (relative to their peers) more likely to cheat?
+
+In `poLCA`, covariates are added to the right side of the formula and affect the **probability of class membership** (not the item-response probabilities).
+
+### Preparing Covariates
+
+```{r}
+#| label: prepare-covariates
+
+# Check our demographic variables
+summary(student_data[, c("AGE", "SCHOOL", "GPA_ZSCORE")])
+
+# For poLCA, we need to dummy-code categorical variables
+# Create dummy variables for SCHOOL (Elementary is reference category)
+student_data <- student_data %>%
+  mutate(
+    SCHOOL_Middle = ifelse(SCHOOL == "Middle School", 1, 0),
+    SCHOOL_High = ifelse(SCHOOL == "High School", 1, 0)
+  )
+
+# Verify the coding
+table(student_data$SCHOOL, student_data$SCHOOL_Middle)
+table(student_data$SCHOOL, student_data$SCHOOL_High)
+```
+
+### Fit Model with Multiple Covariates
+
+```{r}
+#| label: covariate-model
+
+# Define formula with AGE, SCHOOL dummies, and GPA_ZSCORE as covariates
+# Note: We use SCHOOL dummies rather than SCHOOL factor because poLCA
+# requires numeric covariates
+lca_formula_cov <- cbind(LIEEXAM, LIEPAPER, FRAUD, COPYEXAM) ~
+  AGE + SCHOOL_Middle + SCHOOL_High + GPA_ZSCORE
+
+# Fit the 2-class model with covariates
+set.seed(42)
+model_2_cov <- poLCA(lca_formula_cov, data = student_data, nclass = 2,
+                     nrep = 10, verbose = FALSE)
+```
+
+### Interpreting Covariate Effects
+
+The covariate coefficients are interpreted similarly to logistic regression. They represent the effect of the covariate on the **log-odds** of being in class k versus the reference class (the last class).
+
+```{r}
+#| label: covariate-effects
+
+# Extract and display covariate coefficients
+# poLCA uses the last class as the reference category
+coef_names <- c("Intercept", "AGE", "SCHOOL_Middle", "SCHOOL_High", "GPA_ZSCORE")
+
+coef_table <- data.frame(
+  Variable = coef_names,
+  Coefficient = as.numeric(model_2_cov$coeff),
+  SE = sqrt(diag(model_2_cov$coeff.V))
+)
+
+# Calculate z-values and p-values
+coef_table$z_value <- coef_table$Coefficient / coef_table$SE
+coef_table$p_value <- 2 * (1 - pnorm(abs(coef_table$z_value)))
+
+# Calculate odds ratios for easier interpretation
+coef_table$Odds_Ratio <- exp(coef_table$Coefficient)
+
+coef_table %>%
+  kable(digits = 3,
+        caption = "Covariate Effects on Class Membership (Class 1 vs Class 2)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Interpretation
+
+```{r}
+#| label: covariate-interpretation
+#| results: asis
+
+# Determine which class is the "cheating" class based on item probabilities
+class1_cheat_prob <- mean(sapply(model_2_cov$probs, function(x) x[1, 2]))
+class2_cheat_prob <- mean(sapply(model_2_cov$probs, function(x) x[2, 2]))
+
+if (class1_cheat_prob > class2_cheat_prob) {
+  cheating_class <- 1
+  noncheating_class <- 2
+  comparison_text <- "Class 1 (higher cheating) vs Class 2 (lower cheating)"
+} else {
+  cheating_class <- 2
+  noncheating_class <- 1
+  comparison_text <- "Class 1 (lower cheating) vs Class 2 (higher cheating)"
+}
+
+cat("**Interpreting the coefficients** (", comparison_text, "):\n\n", sep = "")
+
+# AGE effect
+age_coef <- coef_table$Coefficient[coef_table$Variable == "AGE"]
+age_or <- coef_table$Odds_Ratio[coef_table$Variable == "AGE"]
+age_p <- coef_table$p_value[coef_table$Variable == "AGE"]
+cat(sprintf("- **AGE:** For each additional year of age, the odds of being in Class 1 (vs Class 2) change by a factor of %.3f (OR = %.3f, p = %.3f).\n\n",
+            age_or, age_or, age_p))
+
+# School effects
+middle_or <- coef_table$Odds_Ratio[coef_table$Variable == "SCHOOL_Middle"]
+middle_p <- coef_table$p_value[coef_table$Variable == "SCHOOL_Middle"]
+high_or <- coef_table$Odds_Ratio[coef_table$Variable == "SCHOOL_High"]
+high_p <- coef_table$p_value[coef_table$Variable == "SCHOOL_High"]
+
+cat(sprintf("- **Middle School vs Elementary:** Students in Middle School have %.3f times the odds of being in Class 1 compared to Elementary students (p = %.3f).\n\n",
+            middle_or, middle_p))
+cat(sprintf("- **High School vs Elementary:** Students in High School have %.3f times the odds of being in Class 1 compared to Elementary students (p = %.3f).\n\n",
+            high_or, high_p))
+
+# GPA effect
+gpa_coef <- coef_table$Coefficient[coef_table$Variable == "GPA_ZSCORE"]
+gpa_or <- coef_table$Odds_Ratio[coef_table$Variable == "GPA_ZSCORE"]
+gpa_p <- coef_table$p_value[coef_table$Variable == "GPA_ZSCORE"]
+cat(sprintf("- **GPA_ZSCORE:** For each 1 standard deviation increase in GPA (relative to school-level peers), the odds of being in Class 1 change by a factor of %.3f (p = %.3f).\n\n",
+            gpa_or, gpa_p))
+```
+
+### Visualizing Covariate Effects
+
+```{r}
+#| label: covariate-plot-age
+#| fig-width: 10
+#| fig-height: 4
+
+# Plot 1: Predicted class membership by AGE (holding other vars at mean/reference)
+age_range <- 10:18
+
+# Calculate predicted probabilities across age range
+# Hold SCHOOL at reference (Elementary: both dummies = 0) and GPA_ZSCORE at 0
+logit_class1_age <- model_2_cov$coeff[1] + model_2_cov$coeff[2] * age_range
+prob_class1_age <- exp(logit_class1_age) / (1 + exp(logit_class1_age))
+
+age_pred <- data.frame(
+  AGE = rep(age_range, 2),
+  Probability = c(prob_class1_age, 1 - prob_class1_age),
+  Class = factor(rep(c("Class 1", "Class 2"), each = length(age_range)))
+)
+
+p_age <- ggplot(age_pred, aes(x = AGE, y = Probability, color = Class)) +
+  geom_line(linewidth = 1.2) +
+  labs(title = "Predicted Class Membership by Age",
+       subtitle = "Elementary students, average GPA",
+       x = "Age (years)", y = "Probability") +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  scale_x_continuous(breaks = 10:18) +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme(legend.position = "bottom")
+
+# Plot 2: Predicted class membership by SCHOOL level
+school_pred <- data.frame(
+  SCHOOL = factor(c("Elementary", "Middle School", "High School"),
+                  levels = c("Elementary", "Middle School", "High School"))
+)
+
+# Calculate predictions at mean age (14) and mean GPA_ZSCORE (0)
+mean_age <- 14
+school_pred$SCHOOL_Middle <- c(0, 1, 0)
+school_pred$SCHOOL_High <- c(0, 0, 1)
+
+logit_school <- model_2_cov$coeff[1] +
+  model_2_cov$coeff[2] * mean_age +
+  model_2_cov$coeff[3] * school_pred$SCHOOL_Middle +
+  model_2_cov$coeff[4] * school_pred$SCHOOL_High
+
+school_pred$Prob_Class1 <- exp(logit_school) / (1 + exp(logit_school))
+school_pred$Prob_Class2 <- 1 - school_pred$Prob_Class1
+
+school_long <- school_pred %>%
+  select(SCHOOL, Prob_Class1, Prob_Class2) %>%
+  pivot_longer(cols = starts_with("Prob"),
+               names_to = "Class",
+               values_to = "Probability") %>%
+  mutate(Class = ifelse(Class == "Prob_Class1", "Class 1", "Class 2"))
+
+p_school <- ggplot(school_long, aes(x = SCHOOL, y = Probability, fill = Class)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  labs(title = "Predicted Class Membership by School Level",
+       subtitle = "Age 14, average GPA",
+       x = "", y = "Probability") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme(legend.position = "bottom")
+
+p_age | p_school
+```
+
+```{r}
+#| label: covariate-plot-gpa
+#| fig-width: 8
+#| fig-height: 5
+
+# Plot: Predicted class membership by GPA_ZSCORE
+gpa_z_range <- seq(-2.5, 2.5, length.out = 100)
+
+# Calculate at mean age, Elementary school (reference)
+logit_gpa <- model_2_cov$coeff[1] +
+  model_2_cov$coeff[2] * 14 +  # mean age
+  model_2_cov$coeff[5] * gpa_z_range
+
+prob_class1_gpa <- exp(logit_gpa) / (1 + exp(logit_gpa))
+
+gpa_pred <- data.frame(
+  GPA_ZSCORE = rep(gpa_z_range, 2),
+  Probability = c(prob_class1_gpa, 1 - prob_class1_gpa),
+  Class = factor(rep(c("Class 1", "Class 2"), each = length(gpa_z_range)))
+)
+
+ggplot(gpa_pred, aes(x = GPA_ZSCORE, y = Probability, color = Class)) +
+  geom_line(linewidth = 1.2) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.5) +
+  labs(title = "Predicted Class Membership by Standardized GPA",
+       subtitle = "Age 14, Elementary school",
+       x = "GPA Z-Score (relative to school-level peers)",
+       y = "Probability of Class Membership") +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  scale_y_continuous(limits = c(0, 1)) +
+  annotate("text", x = -1.5, y = 0.05, label = "Below Average GPA", size = 3) +
+  annotate("text", x = 1.5, y = 0.05, label = "Above Average GPA", size = 3) +
+  theme(legend.position = "bottom")
+```
+
+### Comparing Models With and Without Covariates
+
+```{r}
+#| label: compare-covariate-models
+
+# Compare fit of models with and without covariates
+comparison <- data.frame(
+  Model = c("Without Covariates", "With Covariates"),
+  LogLik = c(model_2$llik, model_2_cov$llik),
+  AIC = c(model_2$aic, model_2_cov$aic),
+  BIC = c(model_2$bic, model_2_cov$bic),
+  N_parameters = c(model_2$npar, model_2_cov$npar)
+)
+
+comparison %>%
+  kable(digits = 2, caption = "Model Comparison: With vs. Without Covariates") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Likelihood ratio test for nested models
+lr_stat <- 2 * (model_2_cov$llik - model_2$llik)
+lr_df <- model_2_cov$npar - model_2$npar
+lr_p <- 1 - pchisq(lr_stat, df = lr_df)
+
+cat(sprintf("\nLikelihood Ratio Test: χ² = %.3f, df = %d, p = %.4f\n",
+            lr_stat, lr_df, lr_p))
+
+if (lr_p < 0.05) {
+  cat("\nThe covariates significantly improve model fit.\n")
+} else {
+  cat("\nThe covariates do not significantly improve model fit.\n")
+}
+```
+
+::: {.callout-tip}
+## Understanding Covariate Effects in LCA
+
+**Key points about covariates in poLCA:**
+
+1. **Reference class:** poLCA uses the last class as the reference category. Coefficients represent log-odds of being in Class 1 vs Class 2.
+
+2. **Reference categories for categorical covariates:** Elementary school is our reference (both dummy variables = 0).
+
+3. **Standardized coefficients:** Using GPA_ZSCORE (z-scored within school level) allows for cleaner interpretation - a 1-unit change represents 1 standard deviation.
+
+4. **No effect on item probabilities:** Covariates in poLCA only affect class membership probabilities, not the item-response probabilities within classes.
+:::
+
+## SHAP Values for Predictor Importance (Optional)
+
+::: {.callout-note}
+## Advanced Topic
+
+This section uses **SHAP (SHapley Additive exPlanations) values** to understand which predictors are most important for class membership. SHAP values come from machine learning interpretability research and provide a principled way to attribute predictions to individual features.
+
+This approach is optional and more advanced than the standard covariate analysis above.
+:::
+
+### What are SHAP Values?
+
+SHAP values decompose a prediction into the contribution of each feature. For our LCA covariate model, SHAP values help answer: "How much does each predictor (AGE, SCHOOL, GPA_ZSCORE) contribute to an individual's predicted class membership?"
+
+Key advantages:
+- **Local interpretability:** Understand predictions for individual students
+- **Global interpretability:** Aggregate to see overall feature importance
+- **Accounts for interactions:** Unlike simple coefficient interpretation
+
+### Computing SHAP Values
+
+```{r}
+#| label: shap-setup
+
+# Load additional packages for SHAP analysis
+library(randomForest)
+library(fastshap)
+
+# Prepare data for SHAP analysis
+# We'll use the posterior probability of Class 1 as our outcome
+student_data$Prob_Class1 <- best_model$posterior[, 1]
+
+# Select predictors
+predictors <- c("AGE", "SCHOOL_Middle", "SCHOOL_High", "GPA_ZSCORE")
+X <- student_data[, predictors]
+
+# Create a prediction wrapper function
+# This function takes new data and returns predicted probabilities
+predict_fn <- function(object, newdata) {
+  # Use the covariate model coefficients to predict
+  logit <- model_2_cov$coeff[1] +
+    model_2_cov$coeff[2] * newdata$AGE +
+    model_2_cov$coeff[3] * newdata$SCHOOL_Middle +
+    model_2_cov$coeff[4] * newdata$SCHOOL_High +
+    model_2_cov$coeff[5] * newdata$GPA_ZSCORE
+  exp(logit) / (1 + exp(logit))
+}
+
+# Compute SHAP values
+set.seed(42)
+shap_values <- explain(
+  object = NULL,  # We're using our custom predict function
+  X = X,
+  pred_wrapper = function(model, newdata) predict_fn(NULL, newdata),
+  nsim = 50  # Number of Monte Carlo simulations
+)
+
+# Convert to data frame
+shap_df <- as.data.frame(shap_values)
+colnames(shap_df) <- predictors
+```
+
+### Global Feature Importance
+
+```{r}
+#| label: shap-importance
+#| fig-width: 8
+#| fig-height: 5
+
+# Calculate mean absolute SHAP values for global importance
+importance_df <- data.frame(
+  Variable = predictors,
+  Mean_Abs_SHAP = colMeans(abs(shap_df))
+) %>%
+  mutate(
+    Variable = factor(Variable, levels = Variable[order(Mean_Abs_SHAP)])
+  )
+
+ggplot(importance_df, aes(x = Mean_Abs_SHAP, y = Variable)) +
+  geom_col(fill = "steelblue", alpha = 0.8) +
+  labs(title = "Global Feature Importance (SHAP Values)",
+       subtitle = "Mean |SHAP value| across all students",
+       x = "Mean Absolute SHAP Value",
+       y = "") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 11))
+```
+
+### SHAP Summary Plot
+
+```{r}
+#| label: shap-summary
+#| fig-width: 10
+#| fig-height: 6
+
+# Create a summary plot showing SHAP values by feature value
+shap_long <- shap_df %>%
+  mutate(row_id = row_number()) %>%
+  pivot_longer(cols = -row_id, names_to = "Variable", values_to = "SHAP") %>%
+  left_join(
+    X %>%
+      mutate(row_id = row_number()) %>%
+      pivot_longer(cols = -row_id, names_to = "Variable", values_to = "Feature_Value"),
+    by = c("row_id", "Variable")
+  )
+
+# Scale feature values to 0-1 for coloring
+shap_long <- shap_long %>%
+  group_by(Variable) %>%
+  mutate(Feature_Scaled = (Feature_Value - min(Feature_Value)) /
+           (max(Feature_Value) - min(Feature_Value) + 0.001)) %>%
+  ungroup()
+
+# Order variables by importance
+var_order <- importance_df %>%
+  arrange(desc(Mean_Abs_SHAP)) %>%
+  pull(Variable) %>%
+  as.character()
+
+shap_long$Variable <- factor(shap_long$Variable, levels = rev(var_order))
+
+ggplot(shap_long, aes(x = SHAP, y = Variable, color = Feature_Scaled)) +
+  geom_jitter(alpha = 0.6, height = 0.2, size = 1.5) +
+  scale_color_gradient2(low = "blue", mid = "gray80", high = "red",
+                        midpoint = 0.5,
+                        name = "Feature Value\n(Normalized)") +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.5) +
+  labs(title = "SHAP Summary Plot",
+       subtitle = "How feature values affect Class 1 membership probability",
+       x = "SHAP Value (impact on Class 1 probability)",
+       y = "") +
+  theme_minimal() +
+  theme(legend.position = "right",
+        axis.text.y = element_text(size = 11))
+```
+
+### Interpreting SHAP Values
+
+```{r}
+#| label: shap-interpretation
+#| results: asis
+
+cat("**How to read the SHAP summary plot:**\n\n")
+cat("- Each dot represents one student\n")
+cat("- **Horizontal position:** SHAP value (how much this feature pushes prediction toward Class 1)\n")
+cat("- **Color:** Feature value (red = high, blue = low)\n")
+cat("- **Vertical spread:** Shows distribution of SHAP values for that feature\n\n")
+
+cat("**Example interpretations:**\n\n")
+cat("- If AGE shows red dots on the right: older students are pushed toward Class 1\n")
+cat("- If GPA_ZSCORE shows blue dots on the right: lower GPA pushes toward Class 1\n")
+cat("- Features with wider horizontal spread have more variable effects\n")
+```
+
+### Individual Student SHAP Breakdown
+
+```{r}
+#| label: shap-individual
+#| fig-width: 10
+#| fig-height: 4
+
+# Show SHAP breakdown for a few example students
+example_students <- c(1, 50, 100)
+
+individual_shap <- shap_df[example_students, ] %>%
+  mutate(Student = paste("Student", example_students)) %>%
+  pivot_longer(cols = -Student, names_to = "Variable", values_to = "SHAP")
+
+# Add student characteristics
+student_chars <- student_data[example_students, c("AGE", "SCHOOL", "GPA_ZSCORE", "Prob_Class1")]
+student_chars$Student <- paste("Student", example_students)
+
+individual_shap <- individual_shap %>%
+  left_join(student_chars %>% select(Student, Prob_Class1), by = "Student")
+
+ggplot(individual_shap, aes(x = SHAP, y = Variable, fill = SHAP > 0)) +
+  geom_col(alpha = 0.8, show.legend = FALSE) +
+  facet_wrap(~Student, scales = "free_x") +
+  scale_fill_manual(values = c("steelblue", "coral")) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(title = "Individual SHAP Value Breakdown",
+       subtitle = "Feature contributions to Class 1 probability for example students",
+       x = "SHAP Value", y = "") +
+  theme_minimal()
+
+# Print characteristics
+cat("\n**Example student characteristics:**\n\n")
+student_chars %>%
+  kable(digits = 2, caption = "Characteristics of Example Students") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+::: {.callout-tip}
+## When to Use SHAP Values
+
+SHAP values are most useful when:
+
+1. **You have many predictors** and want to rank their importance
+2. **You want individual-level explanations** for specific predictions
+3. **You suspect non-linear effects** or interactions between predictors
+4. **Communicating results** to audiences familiar with machine learning interpretability
+
+For simpler models with few predictors, the standard coefficient interpretation may be sufficient.
+:::
+
 ## Exporting Results
 
 ### Save Class Assignments
@@ -778,7 +1658,7 @@ for (i in 1:n_classes) {
 #| label: export-results
 
 # Create output dataset with class assignments and posteriors
-output_data <- cheating %>%
+output_data <- student_data %>%
   mutate(
     Predicted_Class = best_model$predclass,
     Posterior_Class1 = best_model$posterior[, 1],
@@ -790,6 +1670,8 @@ output_data <- cheating %>%
 
 # Display first few rows
 head(output_data) %>%
+  select(AGE, SCHOOL, GPA, GPA_ZSCORE, LIEEXAM:COPYEXAM,
+         Predicted_Class, Posterior_Class1, Posterior_Class2) %>%
   kable(digits = 3, caption = "Output Data with Class Assignments") %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
@@ -799,13 +1681,16 @@ head(output_data) %>%
 In this tutorial, we covered:
 
 1. **Setting up LCA** using the `poLCA` package in R
-2. **Fitting models** with different numbers of classes
-3. **Calculating fit statistics:**
+2. **Creating synthetic demographic data** with realistic school-clustered distributions
+3. **Fitting models** with different numbers of classes
+4. **Calculating fit statistics:**
    - Basic: AIC, BIC, Log-likelihood
    - Classification quality: Entropy, AvePP, OCC
    - Model comparison: Bootstrap LRT
-4. **Selecting the optimal model** based on multiple criteria
-5. **Interpreting results** through item-response probabilities and class profiles
+5. **Selecting the optimal model** based on multiple criteria
+6. **Interpreting results** through item-response probabilities and class profiles
+7. **Adding covariates** (AGE, SCHOOL, GPA_ZSCORE) to predict class membership
+8. **Using SHAP values** (optional) to understand predictor importance and individual-level explanations
 
 ### Key Takeaways
 
@@ -814,6 +1699,8 @@ In this tutorial, we covered:
 - **Consider interpretability** - the solution should make theoretical sense
 - **Report classification quality** - entropy, AvePP, and OCC indicate how well individuals are classified
 - **Use sufficient starting values** (nrep) to avoid local maxima
+- **Z-score continuous covariates** within meaningful groups for cleaner interpretation
+- **SHAP values** provide a powerful complement to coefficient-based interpretation
 
 ## References
 
