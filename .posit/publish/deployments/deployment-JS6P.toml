@@ -11,11 +11,39 @@ id = '019bbe20-a76b-87e4-f052-efa9afc53073'
 dashboard_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbe20-a76b-87e4-f052-efa9afc53073'
 direct_url = 'https://019bbe20-a76b-87e4-f052-efa9afc53073.share.connect.posit.cloud'
 logs_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbe20-a76b-87e4-f052-efa9afc53073/history'
-deployed_at = '2026-01-14T15:16:04-05:00'
+deployed_at = '2026-01-14T15:18:16-05:00'
 files = [
+  '.gitignore',
   '.posit/publish/Latent Class Analysis in R- A-N7SI.toml',
   '.posit/publish/deployments/deployment-JS6P.toml',
+  'LICENSE',
+  'README.md',
+  'lca-walkthrough.html',
   'lca-walkthrough.qmd',
+  'lca-walkthrough_files/figure-html/class-profiles-1.png',
+  'lca-walkthrough_files/figure-html/covariate-plot-age-1.png',
+  'lca-walkthrough_files/figure-html/covariate-plot-gpa-1.png',
+  'lca-walkthrough_files/figure-html/explore-demographics-1.png',
+  'lca-walkthrough_files/figure-html/model-selection-1.png',
+  'lca-walkthrough_files/figure-html/profile-line-plot-1.png',
+  'lca-walkthrough_files/figure-html/shap-importance-1.png',
+  'lca-walkthrough_files/figure-html/shap-individual-1.png',
+  'lca-walkthrough_files/figure-html/shap-summary-1.png',
+  'lca-walkthrough_files/libs/bootstrap/bootstrap-8c4b283fe68d871141289ba1f5d31ced.min.css',
+  'lca-walkthrough_files/libs/bootstrap/bootstrap-icons.css',
+  'lca-walkthrough_files/libs/bootstrap/bootstrap-icons.woff',
+  'lca-walkthrough_files/libs/bootstrap/bootstrap.min.js',
+  'lca-walkthrough_files/libs/clipboard/clipboard.min.js',
+  'lca-walkthrough_files/libs/kePrint-0.0.1/kePrint.js',
+  'lca-walkthrough_files/libs/lightable-0.0.1/lightable.css',
+  'lca-walkthrough_files/libs/quarto-html/anchor.min.js',
+  'lca-walkthrough_files/libs/quarto-html/axe/axe-check.js',
+  'lca-walkthrough_files/libs/quarto-html/popper.min.js',
+  'lca-walkthrough_files/libs/quarto-html/quarto-syntax-highlighting-597958c53c93a607afca12fd375c57ed.css',
+  'lca-walkthrough_files/libs/quarto-html/quarto.js',
+  'lca-walkthrough_files/libs/quarto-html/tabsets/tabsets.js',
+  'lca-walkthrough_files/libs/quarto-html/tippy.css',
+  'lca-walkthrough_files/libs/quarto-html/tippy.umd.min.js',
   'renv.lock'
 ]
 
@@ -24,7 +52,7 @@ account_name = 'dpletta-umich'
 
 [deployment_error]
 code = 'unknown'
-message = 'Error in update content response: unexpected response from the server (409: {"error":"Content 019bbe20-a76b-87e4-f052-efa9afc53073 is marked for deletion.","error_type":"resource_pending_deletion","error_args":null})'
+message = 'Error in update content response: unexpected response from the server (404: {"error":"Could not find Content.","error_type":"resource_not_found","error_args":null})'
 operation = ''
 
 [configuration]
@@ -36,7 +64,13 @@ validate = true
 files = [
   '/lca-walkthrough.qmd',
   '/.posit/publish/Latent Class Analysis in R- A-N7SI.toml',
-  '/.posit/publish/deployments/deployment-JS6P.toml'
+  '/.posit/publish/deployments/deployment-JS6P.toml',
+  '/.posit',
+  '/lca-walkthrough_files',
+  '/lca-walkthrough.html',
+  '/README.md',
+  '/.gitignore',
+  '/LICENSE'
 ]
 title = 'Latent Class Analysis in R: A Step-by-Step Guide'
 

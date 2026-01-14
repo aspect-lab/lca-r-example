@@ -9,7 +9,13 @@ validate = true
 files = [
   '/lca-walkthrough.qmd',
   '/.posit/publish/Latent Class Analysis in R- A-N7SI.toml',
-  '/.posit/publish/deployments/deployment-JS6P.toml'
+  '/.posit/publish/deployments/deployment-JS6P.toml',
+  '/.posit',
+  '/lca-walkthrough_files',
+  '/lca-walkthrough.html',
+  '/README.md',
+  '/.gitignore',
+  '/LICENSE'
 ]
 title = 'Latent Class Analysis in R: A Step-by-Step Guide'
 
