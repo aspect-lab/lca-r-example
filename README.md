@@ -27,11 +27,11 @@ The tutorial demonstrates why latent class structure exists in the data by compa
 
 ### Optimized Bootstrap LRT
 
-An optimized BLRT function using `poLCA.simdata()` is included for more efficient bootstrap sampling when computational resources are limited.
+An optimized BLRT function using `poLCA.simdata()` is included for more efficient bootstrap sampling. This runs by default but can be disabled by setting `eval: false` in the chunk options.
 
 ### Iterative BLRT Function (Advanced)
 
-For advanced users, an optional function `run_blrt_sequence()` automates BLRT comparisons up to a specified maximum number of classes, producing a summary comparison table.
+For advanced users, `run_blrt_sequence()` automates BLRT comparisons up to a specified maximum number of classes, producing a summary comparison table. Runs by default; set `eval: false` to skip.
 
 ## Dataset
 

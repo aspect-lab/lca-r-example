@@ -619,7 +619,7 @@ You may notice large differences in LRT statistics across comparisons (e.g., 7.5
 A very small LRT statistic (near zero) with a large p-value indicates that the more complex model provides essentially no improvement over the simpler one. This is valuable information for model selection.
 :::
 
-### Optimized BLRT for Large Datasets (Optional)
+### Optimized BLRT for Large Datasets
 
 The `blrt_test` function above uses a nested loop to generate bootstrap samples, which is intuitive for learning but can be slow for large datasets ($N > 1000$). For larger datasets, using `poLCA.simdata()` is significantly faster because it generates data directly from the model parameters without iterating through every row in R.
 
@@ -631,9 +631,9 @@ The `blrt_test` function above uses a nested loop to generate bootstrap samples,
 
 ```{r}
 #| label: optimized-blrt
-#| eval: false
+#| eval: true
 
-# Set the eval statement above to true to run
+# Set the eval statement above to false to skip
 
 # Optimized BLRT function using poLCA.simdata() for data generation
 # poLCA.simdata() generates data directly from model parameters,
@@ -723,15 +723,15 @@ The `poLCA.simdata()` function generates simulated data from specified LCA model
 The function returns a list including `$dat` (the simulated data frame) and `$trueclass` (true class memberships). See `?poLCA.simdata` for full documentation.
 :::
 
-### Iterative BLRT Comparison (Optional)
+### Iterative BLRT Comparison (Advanced)
 
 For advanced users who want to automate the BLRT comparison across multiple class solutions, the following function iteratively runs the optimized BLRT for all comparisons up to a specified maximum number of classes.
 
 ```{r}
 #| label: iterative-blrt
-#| eval: false
+#| eval: true
 
-# Set the eval statement above to true to run
+# Set the eval statement above to false to skip this chunk
 
 # Function to run optimized BLRT for all class comparisons up to max_classes
 # Returns a summary table similar to the original BLRT results
