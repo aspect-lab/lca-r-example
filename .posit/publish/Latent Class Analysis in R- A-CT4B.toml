@@ -1,0 +1,12 @@
+product_type = 'connect_cloud'
+'$schema' = 'https://cdn.posit.co/publisher/schemas/posit-publishing-schema-v3.json'
+type = 'html'
+entrypoint = '_output/lca-walkthrough.html'
+source = 'lca-walkthrough.qmd'
+validate = true
+files = [
+  '/_output',
+  '/.posit/publish/Latent Class Analysis in R- A-CT4B.toml',
+  '/.posit/publish/deployments/deployment-A912.toml'
+]
+title = 'Latent Class Analysis in R: A Step-by-Step Guide'
