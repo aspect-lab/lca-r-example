@@ -2,6 +2,8 @@
 
 This repository contains a comprehensive tutorial for conducting Latent Class Analysis (LCA) in R using the `poLCA` package.
 
+See the published Quarto document here: https://019bbe39-3932-10f4-4194-6305bfd6fd66.share.connect.posit.cloud/
+
 ## Overview
 
 The tutorial covers:
