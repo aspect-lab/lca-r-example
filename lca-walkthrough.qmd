@@ -1,7 +1,7 @@
 ---
 title: "Latent Class Analysis in R: A Step-by-Step Guide"
 subtitle: "Using poLCA with Fit Statistics and Model Interpretation"
-author: "David Pletta"
+author: "David R. Pletta, PhD, MPH"
 date: today
 format:
   html:
@@ -631,6 +631,9 @@ The `blrt_test` function above uses a nested loop to generate bootstrap samples,
 
 ```{r}
 #| label: optimized-blrt
+#| eval: false
+
+# Set the eval statement above to true to run
 
 # Optimized BLRT function using poLCA.simdata() for data generation
 # poLCA.simdata() generates data directly from model parameters,
@@ -727,6 +730,8 @@ For advanced users who want to automate the BLRT comparison across multiple clas
 ```{r}
 #| label: iterative-blrt
 #| eval: false
+
+# Set the eval statement above to true to run
 
 # Function to run optimized BLRT for all class comparisons up to max_classes
 # Returns a summary table similar to the original BLRT results
