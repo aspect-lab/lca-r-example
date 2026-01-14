@@ -4,15 +4,15 @@ server_type = 'connect_cloud'
 server_url = 'https://connect.posit.cloud'
 client_version = '1.29.2'
 created_at = ''
-dismissed_at = '2026-01-14T14:03:15-05:00'
+dismissed_at = ''
 type = 'quarto-static'
 configuration_name = 'Latent Class Analysis in R- A-IRM8'
 id = '019bbde3-2529-e6b6-3f2b-ecf2543dc174'
 dashboard_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbde3-2529-e6b6-3f2b-ecf2543dc174'
 direct_url = 'https://019bbde3-2529-e6b6-3f2b-ecf2543dc174.share.connect.posit.cloud'
 logs_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbde3-2529-e6b6-3f2b-ecf2543dc174/history'
-deployed_at = '2026-01-14T14:02:19-05:00'
-bundle_id = '019bbde3-252c-3248-86d0-710242ad526b'
+deployed_at = '2026-01-14T14:08:11-05:00'
+bundle_id = '019bbde7-02bc-c675-2e5c-06d0bc2c0626'
 files = [
   '.posit/publish/Latent Class Analysis in R- A-IRM8.toml',
   '.posit/publish/deployments/deployment-ATT3.toml',
@@ -22,6 +22,11 @@ files = [
 
 [connect_cloud]
 account_name = 'dpletta-umich'
+
+[deployment_error]
+code = 'unknown'
+message = 'Unable to render: Unable to render your content. Please check the logs for more information.'
+operation = 'publish/deployContent'
 
 [configuration]
 product_type = 'connect_cloud'

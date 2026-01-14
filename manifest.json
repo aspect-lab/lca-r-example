@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "locale": "en_US",
+  "platform": "4.4.0",
+  "metadata": {
+    "appmode": "quarto-static",
+    "primary_rmd": "lca-walkthrough.qmd",
+    "content_category": "document"
+  },
+  "quarto": {
+    "version": "1.4.0",
+    "engines": ["knitr"]
+  },
+  "packages": {
+    "poLCA": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com"
+    },
+    "tidyverse": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com"
+    },
+    "ggplot2": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com"
+    },
+    "dplyr": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com"
+    },
+    "tidyr": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com"
+    },
+    "knitr": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com"
+    },
+    "kableExtra": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com"
+    },
+    "patchwork": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com"
+    },
+    "randomForest": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com"
+    },
+    "fastshap": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com"
+    }
+  },
+  "files": {
+    "lca-walkthrough.qmd": {
+      "checksum": ""
+    }
+  }
+}
