@@ -1,0 +1,830 @@
+---
+title: "Latent Class Analysis in R: A Step-by-Step Guide"
+subtitle: "Using poLCA with Fit Statistics and Model Interpretation"
+author: "David Pletta"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    code-tools: true
+    theme: cosmo
+    highlight-style: github
+execute:
+  warning: false
+  message: false
+---
+
+## Introduction
+
+**Latent Class Analysis (LCA)** is a statistical method used to identify unobserved (latent) subgroups within a population based on patterns of responses to categorical indicator variables. Unlike cluster analysis, LCA is model-based and provides probabilistic class membership.
+
+This tutorial will walk you through:
+
+1. Setting up and running LCA models in R
+2. Comparing models with different numbers of classes
+3. Calculating and interpreting fit statistics
+4. Interpreting your final model results
+
+## Setup
+
+### Install and Load Packages
+
+```{r}
+#| label: setup
+
+# Install packages if needed (uncomment to run)
+# install.packages(c("poLCA", "tidyverse", "knitr", "kableExtra"))
+
+# Load required packages
+library(poLCA)      # Main LCA package
+library(tidyverse)  # Data manipulation and visualization
+library(knitr)      # Tables
+library(kableExtra) # Pretty tables
+```
+
+### The Dataset
+
+We'll use the `cheating` dataset that comes built into the `poLCA` package. This dataset contains self-reported cheating behaviors from 319 undergraduate students. The four binary indicators are:
+
+| Variable | Description |
+|----------|-------------|
+| **LIEEXAM** | Lied to avoid taking an exam (1 = No, 2 = Yes) |
+| **LIEPAPER** | Lied to avoid handing a paper in on time (1 = No, 2 = Yes) |
+| **FRAUD** | Purchased a term paper to hand in as own work (1 = No, 2 = Yes) |
+| **COPYEXAM** | Copied answers during an exam from someone sitting nearby (1 = No, 2 = Yes) |
+
+```{r}
+#| label: load-data
+
+# Load the cheating dataset
+data(cheating)
+
+# View the first few rows
+head(cheating)
+
+# Check the structure
+str(cheating)
+
+# Summary statistics
+summary(cheating)
+```
+
+**Important Note for poLCA:** All indicator variables must be coded as positive integers starting at 1 (not 0). The `cheating` dataset is already correctly coded (1 = No, 2 = Yes).
+
+```{r}
+#| label: explore-data
+
+# Look at response frequencies for each variable
+cheating %>%
+  select(LIEEXAM, LIEPAPER, FRAUD, COPYEXAM) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Response") %>%
+  mutate(Response = factor(Response, labels = c("No", "Yes"))) %>%
+  count(Variable, Response) %>%
+  pivot_wider(names_from = Response, values_from = n) %>%
+  mutate(Pct_Yes = round(Yes / (No + Yes) * 100, 1)) %>%
+  kable(caption = "Response Frequencies for Cheating Behaviors") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Running LCA Models
+
+### Step 1: Define the Model Formula
+
+In `poLCA`, we specify which variables are indicators of the latent class using a formula. All indicators go on the left side of `~` and `1` goes on the right (meaning no covariates predicting class membership).
+
+```{r}
+#| label: model-formula
+
+# Define the LCA formula
+# All four cheating behaviors are indicators of the latent class
+lca_formula <- cbind(LIEEXAM, LIEPAPER, FRAUD, COPYEXAM) ~ 1
+```
+
+### Step 2: Fit Models with Different Numbers of Classes
+
+A key step in LCA is determining the optimal number of classes. We'll fit models with 2, 3, and 4 classes and compare them.
+
+```{r}
+#| label: fit-models
+
+# Set seed for reproducibility
+set.seed(42)
+
+# Fit models with 2-4 classes
+# nrep = 10 runs the model 10 times with different starting values
+# to avoid local maxima (increase for final analyses)
+
+model_2 <- poLCA(lca_formula, data = cheating, nclass = 2,
+                 nrep = 10, verbose = FALSE)
+
+model_3 <- poLCA(lca_formula, data = cheating, nclass = 3,
+                 nrep = 10, verbose = FALSE)
+
+model_4 <- poLCA(lca_formula, data = cheating, nclass = 4,
+                 nrep = 10, verbose = FALSE)
+
+# Store models in a list for easier comparison
+models <- list(model_2, model_3, model_4)
+names(models) <- c("2-Class", "3-Class", "4-Class")
+```
+
+## Fit Statistics
+
+### Understanding Key Fit Indices
+
+When comparing LCA models, we examine several fit statistics:
+
+| Statistic | Description | What to Look For |
+|-----------|-------------|------------------|
+| **AIC** | Akaike Information Criterion | Lower is better |
+| **BIC** | Bayesian Information Criterion | Lower is better; often preferred for class enumeration |
+| **Entropy** | Quality of classification | Higher is better (closer to 1.0) |
+| **AvePP** | Average Posterior Probability | Higher is better (> 0.70 acceptable, > 0.80 good) |
+| **OCC** | Odds of Correct Classification | Higher is better (> 5.0 indicates good separation) |
+| **BLRT** | Bootstrap Likelihood Ratio Test | Significant p-value suggests k classes fit better than k-1 |
+
+### Calculate Fit Statistics
+
+#### Basic Fit Statistics (AIC, BIC, Log-Likelihood)
+
+```{r}
+#| label: basic-fit
+
+# Function to extract basic fit statistics
+extract_basic_fit <- function(model, n_class) {
+  data.frame(
+    Classes = n_class,
+    LogLik = model$llik,
+    AIC = model$aic,
+    BIC = model$bic,
+    N_parameters = model$npar,
+    df = model$resid.df
+  )
+}
+
+# Extract for all models
+basic_fit <- bind_rows(
+  extract_basic_fit(model_2, 2),
+  extract_basic_fit(model_3, 3),
+  extract_basic_fit(model_4, 4)
+)
+
+# Display table
+basic_fit %>%
+  kable(digits = 2, caption = "Basic Fit Statistics") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+#### Entropy
+
+Entropy measures the quality of classification. It ranges from 0 to 1, with values closer to 1 indicating clearer class separation.
+
+```{r}
+#| label: entropy
+
+# Function to calculate entropy
+calculate_entropy <- function(model) {
+  # Get posterior probabilities
+  posterior <- model$posterior
+
+  # Calculate entropy
+  # Formula: 1 - (sum of -p*log(p)) / (N * log(K))
+  N <- nrow(posterior)
+  K <- ncol(posterior)
+
+  # Calculate the sum of -p*log(p) for each observation
+  # Add small value to avoid log(0)
+  entropy_sum <- sum(-posterior * log(posterior + 1e-10))
+
+  # Relative entropy
+  entropy <- 1 - (entropy_sum / (N * log(K)))
+
+  return(entropy)
+}
+
+# Calculate entropy for each model
+entropy_values <- sapply(models, calculate_entropy)
+
+# Display
+entropy_df <- data.frame(
+  Model = names(entropy_values),
+  Entropy = round(entropy_values, 3)
+)
+
+entropy_df %>%
+  kable(caption = "Entropy Values by Model") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Interpretation Guidelines for Entropy:**
+
+- \> 0.80: High classification accuracy
+- 0.60 - 0.80: Medium classification accuracy
+- \< 0.60: Low classification accuracy (classes may not be well-separated)
+
+#### Average Posterior Probability (AvePP)
+
+AvePP is the average of the maximum posterior probabilities within each class. Higher values indicate that individuals are classified with greater certainty.
+
+```{r}
+#| label: avepp
+
+# Function to calculate AvePP for each class
+calculate_avepp <- function(model) {
+  # Get posterior probabilities and predicted class
+  posterior <- model$posterior
+  predicted_class <- model$predclass
+
+  # Calculate AvePP for each class
+  n_classes <- ncol(posterior)
+  avepp_by_class <- numeric(n_classes)
+
+  for (k in 1:n_classes) {
+    # Get posterior probabilities for individuals assigned to class k
+    class_members <- predicted_class == k
+    if (sum(class_members) > 0) {
+      avepp_by_class[k] <- mean(posterior[class_members, k])
+    }
+  }
+
+  return(list(
+    by_class = avepp_by_class,
+    overall = mean(avepp_by_class)
+  ))
+}
+
+# Calculate AvePP for each model
+avepp_results <- lapply(models, calculate_avepp)
+
+# Create summary table
+avepp_summary <- data.frame(
+  Model = names(models),
+  Overall_AvePP = sapply(avepp_results, function(x) round(x$overall, 3))
+)
+
+avepp_summary %>%
+  kable(caption = "Average Posterior Probability (AvePP)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Interpretation Guidelines for AvePP:**
+
+- \> 0.80: Good classification certainty
+- 0.70 - 0.80: Acceptable classification certainty
+- \< 0.70: Poor classification certainty
+
+#### Detailed AvePP by Class
+
+```{r}
+#| label: avepp-detail
+
+# Show AvePP by class for each model
+cat("AvePP by Class:\n\n")
+
+for (model_name in names(models)) {
+  cat(model_name, "Model:\n")
+  avepp <- avepp_results[[model_name]]$by_class
+  for (k in seq_along(avepp)) {
+    cat(sprintf("  Class %d: %.3f\n", k, avepp[k]))
+  }
+  cat("\n")
+}
+```
+
+#### Odds of Correct Classification (OCC)
+
+OCC indicates how much better the model's classification is compared to random assignment. Values > 5 suggest good class separation.
+
+```{r}
+#| label: occ
+
+# Function to calculate OCC for each class
+calculate_occ <- function(model) {
+  posterior <- model$posterior
+  predicted_class <- model$predclass
+  class_sizes <- model$P  # Prior probabilities (class proportions)
+  n_classes <- ncol(posterior)
+
+  occ_by_class <- numeric(n_classes)
+
+  for (k in 1:n_classes) {
+    class_members <- predicted_class == k
+    if (sum(class_members) > 0) {
+      avepp_k <- mean(posterior[class_members, k])
+      # OCC formula: (AvePP / (1 - AvePP)) / (class_size / (1 - class_size))
+      occ_by_class[k] <- (avepp_k / (1 - avepp_k)) /
+                         (class_sizes[k] / (1 - class_sizes[k]))
+    }
+  }
+
+  return(list(
+    by_class = occ_by_class,
+    minimum = min(occ_by_class)
+  ))
+}
+
+# Calculate OCC for each model
+occ_results <- lapply(models, calculate_occ)
+
+# Create summary table
+occ_summary <- data.frame(
+  Model = names(models),
+  Min_OCC = sapply(occ_results, function(x) round(x$minimum, 2))
+)
+
+occ_summary %>%
+  kable(caption = "Minimum Odds of Correct Classification (OCC)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Interpretation Guidelines for OCC:**
+
+- \> 5.0: Good class separation
+- 1.0 - 5.0: Moderate class separation
+- \< 1.0: Poor class separation (no better than chance)
+
+#### Detailed OCC by Class
+
+```{r}
+#| label: occ-detail
+
+# Show OCC by class for each model
+cat("OCC by Class:\n\n")
+
+for (model_name in names(models)) {
+  cat(model_name, "Model:\n")
+  occ <- occ_results[[model_name]]$by_class
+  for (k in seq_along(occ)) {
+    cat(sprintf("  Class %d: %.2f\n", k, occ[k]))
+  }
+  cat("\n")
+}
+```
+
+### Bootstrap Likelihood Ratio Test (BLRT)
+
+The BLRT compares a model with k classes to a model with k-1 classes. A significant p-value suggests the k-class model fits significantly better.
+
+**Note:** BLRT is computationally intensive. We'll demonstrate with a small number of bootstrap samples. For publication, use at least 100-500 bootstrap samples.
+
+```{r}
+#| label: blrt
+
+# Function to perform Bootstrap LRT
+# Compares k-class model to (k-1)-class model
+blrt_test <- function(formula, data, k, n_boot = 100, seed = 42) {
+  set.seed(seed)
+
+  # Fit the null model (k-1 classes) and alternative model (k classes)
+  model_null <- poLCA(formula, data = data, nclass = k - 1,
+                      nrep = 5, verbose = FALSE)
+  model_alt <- poLCA(formula, data = data, nclass = k,
+                     nrep = 5, verbose = FALSE)
+
+  # Observed LRT statistic
+  lrt_observed <- 2 * (model_alt$llik - model_null$llik)
+
+  # Bootstrap under the null model
+  n <- nrow(data)
+  lrt_boot <- numeric(n_boot)
+
+  for (b in 1:n_boot) {
+    # Generate bootstrap sample under null model
+    # Sample class memberships based on null model probabilities
+    class_probs <- model_null$P
+    classes <- sample(1:(k-1), n, replace = TRUE, prob = class_probs)
+
+    # Generate responses based on null model item probabilities
+    boot_data <- data
+    for (j in 1:length(model_null$probs)) {
+      var_name <- names(model_null$probs)[j]
+      n_categories <- length(model_null$probs[[j]][1,])
+
+      for (i in 1:n) {
+        class_i <- classes[i]
+        probs_i <- model_null$probs[[j]][class_i, ]
+        boot_data[i, var_name] <- sample(1:n_categories, 1, prob = probs_i)
+      }
+    }
+
+    # Fit both models to bootstrap sample
+    boot_null <- tryCatch(
+      poLCA(formula, data = boot_data, nclass = k - 1,
+            nrep = 3, verbose = FALSE),
+      error = function(e) NULL
+    )
+
+    boot_alt <- tryCatch(
+      poLCA(formula, data = boot_data, nclass = k,
+            nrep = 3, verbose = FALSE),
+      error = function(e) NULL
+    )
+
+    if (!is.null(boot_null) && !is.null(boot_alt)) {
+      lrt_boot[b] <- 2 * (boot_alt$llik - boot_null$llik)
+    } else {
+      lrt_boot[b] <- NA
+    }
+  }
+
+  # Calculate p-value
+  lrt_boot <- na.omit(lrt_boot)
+  p_value <- mean(lrt_boot >= lrt_observed)
+
+  return(list(
+    lrt_statistic = lrt_observed,
+    p_value = p_value,
+    n_valid_boot = length(lrt_boot)
+  ))
+}
+
+# Run BLRT for 2 vs 3 classes and 3 vs 4 classes
+# Using fewer bootstrap samples for demonstration (increase for real analysis)
+cat("Running Bootstrap LRT (this may take a moment)...\n\n")
+
+blrt_2v3 <- blrt_test(lca_formula, cheating, k = 3, n_boot = 50)
+blrt_3v4 <- blrt_test(lca_formula, cheating, k = 4, n_boot = 50)
+
+# Display results
+blrt_results <- data.frame(
+  Comparison = c("2 vs 3 Classes", "3 vs 4 Classes"),
+  LRT_Statistic = c(blrt_2v3$lrt_statistic, blrt_3v4$lrt_statistic),
+  p_value = c(blrt_2v3$p_value, blrt_3v4$p_value),
+  N_Bootstrap = c(blrt_2v3$n_valid_boot, blrt_3v4$n_valid_boot)
+)
+
+blrt_results %>%
+  kable(digits = 4, caption = "Bootstrap Likelihood Ratio Test Results") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Interpretation:** A significant p-value (typically < 0.05) suggests that the model with more classes fits significantly better than the model with fewer classes.
+
+### Combined Fit Statistics Table
+
+```{r}
+#| label: combined-fit
+
+# Create comprehensive fit statistics table
+fit_summary <- data.frame(
+  Model = names(models),
+  LogLik = sapply(models, function(m) m$llik),
+  AIC = sapply(models, function(m) m$aic),
+  BIC = sapply(models, function(m) m$bic),
+  Entropy = entropy_values,
+  AvePP = sapply(avepp_results, function(x) x$overall),
+  Min_OCC = sapply(occ_results, function(x) x$minimum)
+)
+
+fit_summary %>%
+  kable(digits = 3, caption = "Comprehensive Fit Statistics Summary") %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  row_spec(which.min(fit_summary$BIC), bold = TRUE, background = "#e6f3ff")
+```
+
+**Note:** The highlighted row indicates the model with the lowest BIC.
+
+## Model Selection
+
+Based on the fit statistics above, we need to consider:
+
+1. **Information Criteria (AIC/BIC):** Lower values indicate better fit, with BIC generally preferred for class enumeration as it penalizes model complexity more heavily.
+
+2. **Entropy:** Values above 0.80 indicate good classification accuracy.
+
+3. **AvePP:** Values above 0.70 are acceptable; above 0.80 is good.
+
+4. **OCC:** Values above 5 indicate good class separation.
+
+5. **BLRT:** Significant p-values suggest the more complex model fits better.
+
+6. **Interpretability:** The solution should make theoretical sense.
+
+```{r}
+#| label: model-selection
+#| fig-width: 9
+#| fig-height: 5
+
+# Visual comparison of fit indices
+fit_long <- fit_summary %>%
+  select(Model, BIC, Entropy, AvePP, Min_OCC) %>%
+  pivot_longer(cols = -Model, names_to = "Index", values_to = "Value")
+
+# Normalize for visualization
+fit_normalized <- fit_long %>%
+  group_by(Index) %>%
+  mutate(Value_norm = case_when(
+    Index == "BIC" ~ (max(Value) - Value) / (max(Value) - min(Value)), # Reverse for BIC
+    TRUE ~ (Value - min(Value)) / (max(Value) - min(Value))
+  ))
+
+ggplot(fit_normalized, aes(x = Model, y = Value_norm, fill = Index)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Normalized Fit Indices Comparison",
+       subtitle = "Higher values indicate better fit (BIC is reversed)",
+       y = "Normalized Value (0-1)",
+       x = "Model") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+```
+
+## Interpreting the Selected Model
+
+For this tutorial, let's examine the **2-class model** in detail (this is typically the best-fitting model for the cheating data based on BIC).
+
+```{r}
+#| label: select-model
+
+# Select the best model (adjust based on your analysis)
+best_model <- model_2
+n_classes <- 2
+
+cat("Selected Model:", n_classes, "Classes\n")
+cat("Log-likelihood:", best_model$llik, "\n")
+cat("BIC:", best_model$bic, "\n")
+cat("Entropy:", round(calculate_entropy(best_model), 3), "\n")
+```
+
+### Class Proportions
+
+```{r}
+#| label: class-proportions
+
+# Class proportions (prior probabilities)
+class_props <- data.frame(
+  Class = paste("Class", 1:n_classes),
+  Proportion = best_model$P,
+  Percentage = paste0(round(best_model$P * 100, 1), "%"),
+  N_estimated = round(best_model$P * nrow(cheating))
+)
+
+class_props %>%
+  kable(caption = "Class Proportions") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Item-Response Probabilities
+
+The item-response probabilities show the probability of each response category for each indicator, conditional on class membership. This is the key output for interpreting what each class represents.
+
+For binary indicators, we focus on the probability of "Yes" (category 2) for each behavior.
+
+```{r}
+#| label: item-probs
+
+# Extract and format item-response probabilities
+format_probs <- function(model) {
+  probs_list <- model$probs
+
+  # Create a data frame for each variable
+  all_probs <- lapply(names(probs_list), function(var_name) {
+    probs_matrix <- probs_list[[var_name]]
+
+    df <- as.data.frame(probs_matrix)
+    colnames(df) <- c("No", "Yes")  # Categories 1 and 2
+    df$Class <- paste("Class", 1:nrow(df))
+    df$Variable <- var_name
+
+    df %>%
+      pivot_longer(cols = c("No", "Yes"),
+                   names_to = "Response",
+                   values_to = "Probability")
+  })
+
+  bind_rows(all_probs)
+}
+
+item_probs <- format_probs(best_model)
+
+# Display probability of "Yes" for each variable by class
+item_probs %>%
+  filter(Response == "Yes") %>%
+  select(Variable, Class, Probability) %>%
+  pivot_wider(names_from = Class, values_from = Probability) %>%
+  kable(digits = 3,
+        caption = "Probability of 'Yes' Response by Class") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Visualizing Class Profiles
+
+```{r}
+#| label: class-profiles
+#| fig-width: 9
+#| fig-height: 5
+
+# Create profile plot showing probability of "Yes" for each behavior by class
+yes_probs <- item_probs %>%
+  filter(Response == "Yes") %>%
+  mutate(
+    Class = factor(Class),
+    Variable = factor(Variable,
+                      levels = c("LIEEXAM", "LIEPAPER", "FRAUD", "COPYEXAM"),
+                      labels = c("Lied about\nExam", "Lied about\nPaper",
+                                "Bought\nPaper", "Copied on\nExam"))
+  )
+
+ggplot(yes_probs, aes(x = Variable, y = Probability,
+                       fill = Class, group = Class)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) +
+  geom_text(aes(label = sprintf("%.2f", Probability)),
+            position = position_dodge(width = 0.7),
+            vjust = -0.5, size = 3) +
+  labs(title = "Class Profiles: Probability of Each Cheating Behavior",
+       subtitle = "Item-response probabilities by latent class",
+       y = "Probability of 'Yes'",
+       x = "Cheating Behavior") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+#| label: profile-line-plot
+#| fig-width: 9
+#| fig-height: 5
+
+# Alternative visualization: Line plot
+ggplot(yes_probs, aes(x = Variable, y = Probability,
+                       color = Class, group = Class)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 4) +
+  labs(title = "Class Profiles: Probability of Each Cheating Behavior",
+       subtitle = "Higher values indicate greater likelihood of the behavior",
+       y = "Probability of 'Yes'",
+       x = "Cheating Behavior") +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  theme(legend.position = "bottom")
+```
+
+### Class Membership
+
+```{r}
+#| label: class-membership
+
+# Add predicted class to the data
+cheating_with_class <- cheating %>%
+  mutate(
+    Predicted_Class = best_model$predclass,
+    Max_Posterior = apply(best_model$posterior, 1, max)
+  )
+
+# Summary of class assignments
+cheating_with_class %>%
+  group_by(Predicted_Class) %>%
+  summarize(
+    N = n(),
+    Mean_Max_Posterior = mean(Max_Posterior),
+    Min_Max_Posterior = min(Max_Posterior),
+    Max_Max_Posterior = max(Max_Posterior)
+  ) %>%
+  kable(digits = 3, caption = "Class Assignment Summary") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Classification Table (Posterior Probabilities)
+
+```{r}
+#| label: classification-table
+
+# Average posterior probabilities for each class
+avg_posterior <- best_model$posterior %>%
+  as.data.frame() %>%
+  mutate(Assigned_Class = best_model$predclass) %>%
+  group_by(Assigned_Class) %>%
+  summarize(across(everything(), mean))
+
+colnames(avg_posterior) <- c("Assigned_Class",
+                              paste("Posterior_Class", 1:n_classes))
+
+avg_posterior %>%
+  kable(digits = 3,
+        caption = "Average Posterior Probabilities by Assigned Class") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Interpretation:** The diagonal values represent the AvePP for each class. Higher diagonal values (and lower off-diagonal values) indicate better classification certainty.
+
+## Interpreting Your Results
+
+Based on our analysis of the cheating data, we can characterize the latent classes:
+
+```{r}
+#| label: interpretation
+
+# Create interpretation based on item-response probabilities
+interpretation <- item_probs %>%
+  filter(Response == "Yes") %>%
+  group_by(Class) %>%
+  summarize(
+    Mean_Prob_Yes = mean(Probability),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Class_Size = paste0(round(best_model$P * 100, 1), "%"),
+    Interpretation = case_when(
+      Mean_Prob_Yes > 0.5 ~ "High Cheating Propensity",
+      Mean_Prob_Yes > 0.2 ~ "Moderate Cheating Propensity",
+      TRUE ~ "Low Cheating Propensity"
+    )
+  )
+
+interpretation %>%
+  kable(digits = 3, caption = "Class Interpretation Summary") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Substantive Interpretation
+
+Based on the item-response probabilities, we can describe our classes:
+
+```{r}
+#| label: substantive-interpretation
+#| results: asis
+
+# Generate interpretation text based on probabilities
+probs_wide <- item_probs %>%
+  filter(Response == "Yes") %>%
+  select(Class, Variable, Probability) %>%
+  pivot_wider(names_from = Variable, values_from = Probability)
+
+for (i in 1:n_classes) {
+  class_probs <- probs_wide[i, ]
+  class_size <- round(best_model$P[i] * 100, 1)
+
+  cat(sprintf("\n**%s** (%.1f%% of sample):\n\n", class_probs$Class, class_size))
+
+  cat(sprintf("- Probability of lying about exam: %.1f%%\n",
+              class_probs$LIEEXAM * 100))
+  cat(sprintf("- Probability of lying about paper: %.1f%%\n",
+              class_probs$LIEPAPER * 100))
+  cat(sprintf("- Probability of buying a paper: %.1f%%\n",
+              class_probs$FRAUD * 100))
+  cat(sprintf("- Probability of copying on exam: %.1f%%\n\n",
+              class_probs$COPYEXAM * 100))
+}
+```
+
+## Exporting Results
+
+### Save Class Assignments
+
+```{r}
+#| label: export-results
+
+# Create output dataset with class assignments and posteriors
+output_data <- cheating %>%
+  mutate(
+    Predicted_Class = best_model$predclass,
+    Posterior_Class1 = best_model$posterior[, 1],
+    Posterior_Class2 = best_model$posterior[, 2]
+  )
+
+# Save to CSV (uncomment to save)
+# write_csv(output_data, "lca_results.csv")
+
+# Display first few rows
+head(output_data) %>%
+  kable(digits = 3, caption = "Output Data with Class Assignments") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Summary
+
+In this tutorial, we covered:
+
+1. **Setting up LCA** using the `poLCA` package in R
+2. **Fitting models** with different numbers of classes
+3. **Calculating fit statistics:**
+   - Basic: AIC, BIC, Log-likelihood
+   - Classification quality: Entropy, AvePP, OCC
+   - Model comparison: Bootstrap LRT
+4. **Selecting the optimal model** based on multiple criteria
+5. **Interpreting results** through item-response probabilities and class profiles
+
+### Key Takeaways
+
+- **Always compare multiple models** with different numbers of classes
+- **Use multiple fit indices** - no single statistic should determine model selection
+- **Consider interpretability** - the solution should make theoretical sense
+- **Report classification quality** - entropy, AvePP, and OCC indicate how well individuals are classified
+- **Use sufficient starting values** (nrep) to avoid local maxima
+
+## References
+
+- Linzer, D. A., & Lewis, J. B. (2011). poLCA: An R package for polytomous variable latent class analysis. *Journal of Statistical Software, 42*(10), 1-29.
+- Nylund, K. L., Asparouhov, T., & Muthen, B. O. (2007). Deciding on the number of classes in latent class analysis and growth mixture modeling: A Monte Carlo simulation study. *Structural Equation Modeling, 14*(4), 535-569.
+- Collins, L. M., & Lanza, S. T. (2010). *Latent class and latent transition analysis: With applications in the social, behavioral, and health sciences*. John Wiley & Sons.
+
+## Session Info
+
+```{r}
+#| label: session-info
+
+sessionInfo()
+```

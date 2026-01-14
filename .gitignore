@@ -1,0 +1,25 @@
+# R specific
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# Quarto outputs
+/.quarto/
+_site/
+_book/
+*_files/
+*.html
+!README.html
+
+# Data outputs
+*.csv
+lca_results.csv
+
+# System files
+.DS_Store
+Thumbs.db
+
+# RStudio Connect / Posit Connect
+rsconnect/
