@@ -24,4 +24,14 @@ Thumbs.db
 # RStudio Connect / Posit Connect
 rsconnect/
 
+# renv - ignore library but keep lockfile and activation script
+renv/library/
+renv/local/
+renv/cellar/
+renv/lock/
+renv/python/
+renv/sandbox/
+renv/staging/
+
+# Claude Code
 .claude/
