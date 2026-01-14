@@ -11,8 +11,8 @@ id = '019bbdf6-2b60-1367-98e7-afa55c8d8d24'
 dashboard_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbdf6-2b60-1367-98e7-afa55c8d8d24'
 direct_url = 'https://019bbdf6-2b60-1367-98e7-afa55c8d8d24.share.connect.posit.cloud'
 logs_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbdf6-2b60-1367-98e7-afa55c8d8d24/history'
-deployed_at = '2026-01-14T14:25:17-05:00'
-bundle_id = '019bbdf8-2db8-f5d8-a98d-555ec62cf7a7'
+deployed_at = '2026-01-14T14:29:55-05:00'
+bundle_id = '019bbdfa-e35a-05fe-88ae-50359abf387d'
 files = [
   '.posit/publish/Latent Class Analysis in R- A-S8J7.toml',
   '.posit/publish/deployments/deployment-9GK5.toml',
@@ -23,6 +23,11 @@ files = [
 [connect_cloud]
 account_name = 'dpletta-umich'
 
+[deployment_error]
+code = 'unknown'
+message = 'Unable to render: Unable to render your content. Please check the logs for more information.'
+operation = 'publish/deployContent'
+
 [configuration]
 product_type = 'connect_cloud'
 '$schema' = 'https://cdn.posit.co/publisher/schemas/posit-publishing-schema-v3.json'
@@ -32,7 +37,8 @@ validate = true
 files = [
   '/lca-walkthrough.qmd',
   '/.posit/publish/Latent Class Analysis in R- A-S8J7.toml',
-  '/.posit/publish/deployments/deployment-9GK5.toml'
+  '/.posit/publish/deployments/deployment-9GK5.toml',
+  '/.posit'
 ]
 title = 'Latent Class Analysis in R: A Step-by-Step Guide'
 
