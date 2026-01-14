@@ -35,3 +35,4 @@ renv/staging/
 
 # Claude Code
 .claude/
+**/*.quarto_ipynb
