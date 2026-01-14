@@ -8,15 +8,8 @@ entrypoint = 'lca-walkthrough.qmd'
 validate = true
 files = [
   '/lca-walkthrough.qmd',
-  '/.posit/publish/Latent Class Analysis in R- A-S8J7.toml',
-  '/.posit/publish/deployments/deployment-9GK5.toml',
-  '/.posit',
-  '/lca-walkthrough_files',
-  '/lca-walkthrough.html',
-  '/README.md',
-  '/.gitignore',
-  '/renv',
-  '/renv.lock'
+  '/.posit/publish/Latent Class Analysis in R- A-N7SI.toml',
+  '/.posit/publish/deployments/deployment-JS6P.toml'
 ]
 title = 'Latent Class Analysis in R: A Step-by-Step Guide'
 
