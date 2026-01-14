@@ -11,8 +11,7 @@ id = '019bbe20-a76b-87e4-f052-efa9afc53073'
 dashboard_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbe20-a76b-87e4-f052-efa9afc53073'
 direct_url = 'https://019bbe20-a76b-87e4-f052-efa9afc53073.share.connect.posit.cloud'
 logs_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbe20-a76b-87e4-f052-efa9afc53073/history'
-deployed_at = '2026-01-14T15:09:30-05:00'
-bundle_id = '019bbe20-a76e-1cb1-6e11-69da75e592de'
+deployed_at = '2026-01-14T15:16:04-05:00'
 files = [
   '.posit/publish/Latent Class Analysis in R- A-N7SI.toml',
   '.posit/publish/deployments/deployment-JS6P.toml',
@@ -22,6 +21,11 @@ files = [
 
 [connect_cloud]
 account_name = 'dpletta-umich'
+
+[deployment_error]
+code = 'unknown'
+message = 'Error in update content response: unexpected response from the server (409: {"error":"Content 019bbe20-a76b-87e4-f052-efa9afc53073 is marked for deletion.","error_type":"resource_pending_deletion","error_args":null})'
+operation = ''
 
 [configuration]
 product_type = 'connect_cloud'
