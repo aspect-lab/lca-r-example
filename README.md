@@ -6,7 +6,7 @@ This repository contains a comprehensive tutorial for conducting Latent Class An
 
 The tutorial covers:
 
-- Setting up and running LCA models
+- Setting up and running LCA models (1-class through 4-class)
 - Creating synthetic demographic data with realistic school-clustered distributions
 - Calculating and comparing fit statistics:
   - AIC/BIC
@@ -14,10 +14,24 @@ The tutorial covers:
   - Average Posterior Probability (AvePP)
   - Odds of Correct Classification (OCC)
   - Bootstrap Likelihood Ratio Test (BLRT)
-- Model selection strategies
+- Model selection strategies including 1-class baseline comparison
 - Interpreting and visualizing results
 - Adding covariates (AGE, SCHOOL, GPA) to predict class membership
 - Using SHAP values for predictor importance (optional advanced section)
+
+## Key Features
+
+### 1-Class Baseline Comparison
+
+The tutorial demonstrates why latent class structure exists in the data by comparing models starting from a 1-class baseline. The significant BLRT comparing 2 vs 1 classes confirms that meaningful subgroups exist.
+
+### Optimized Bootstrap LRT
+
+An optimized BLRT function using `poLCA.simdata()` is included for more efficient bootstrap sampling when computational resources are limited.
+
+### Iterative BLRT Function (Advanced)
+
+For advanced users, an optional function `run_blrt_sequence()` automates BLRT comparisons up to a specified maximum number of classes, producing a summary comparison table.
 
 ## Dataset
 
@@ -61,6 +75,18 @@ Open `lca-walkthrough.qmd` in RStudio and render to HTML, or use:
 ```r
 quarto::quarto_render("lca-walkthrough.qmd")
 ```
+
+## Tutorial Sections
+
+1. **Setup and Data** - Loading packages, creating synthetic demographics
+2. **Model Fitting** - Running 1-4 class models
+3. **Fit Statistics** - Calculating AIC, BIC, Entropy, AvePP, OCC
+4. **Bootstrap LRT** - Standard and optimized BLRT with iterative function
+5. **Model Selection** - Comparing fit indices with visualizations
+6. **Interpretation** - Class profiles, item-response probabilities
+7. **Covariates** - Adding AGE, SCHOOL, GPA as predictors
+8. **SHAP Values** - Optional machine learning interpretability approach
+9. **Exporting Results** - Saving class assignments
 
 ## License
 
