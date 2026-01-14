@@ -11,7 +11,7 @@ id = '019bbe20-a76b-87e4-f052-efa9afc53073'
 dashboard_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbe20-a76b-87e4-f052-efa9afc53073'
 direct_url = 'https://019bbe20-a76b-87e4-f052-efa9afc53073.share.connect.posit.cloud'
 logs_url = 'https://connect.posit.cloud/dpletta-umich/content/019bbe20-a76b-87e4-f052-efa9afc53073/history'
-deployed_at = '2026-01-14T15:18:16-05:00'
+deployed_at = '2026-01-14T15:18:46-05:00'
 files = [
   '.gitignore',
   '.posit/publish/Latent Class Analysis in R- A-N7SI.toml',

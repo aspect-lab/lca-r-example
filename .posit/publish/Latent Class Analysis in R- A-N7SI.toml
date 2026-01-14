@@ -14,7 +14,6 @@ files = [
   '/lca-walkthrough_files',
   '/lca-walkthrough.html',
   '/README.md',
-  '/.gitignore',
   '/LICENSE'
 ]
 title = 'Latent Class Analysis in R: A Step-by-Step Guide'
